@@ -102,12 +102,13 @@ void run_generation(Model<T>& model,
 }
 
 int main(int argc, char** argv) {
-#if 0
+#if 1
     if (argc < 3) {
         std::cerr << "Usage: " << argv[0] << " <model_path> <prompt>\n";
         return 1;
     }
 #else
+    // Useful for running in visual studio
     char* test_argv[] = {
         argv[0],  // keep program name
         (char*)"D:/my_files/my_docs/ai/models/torchless/mistral-int8.bin",
