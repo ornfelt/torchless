@@ -122,6 +122,53 @@ void Parameters::load_tensor(std::unordered_map<std::string, std::variant<Tensor
         Tensor<int8_t> t = Tensor(reinterpret_cast<int8_t*>(p + offset), std::vector<float>(scale_start, scale_start+scale_size), shape);
         m.insert({key, t});
     }
+    else if (type == "int4") {
+        uint64_t scale_offset = value["scale_offset"];
+        uint64_t scale_size   = value["scale_size"];
+
+        // Load scales (same as int8)
+        float* scale_start = reinterpret_cast<float*>(p + scale_offset);
+        std::vector<float> scales(scale_start, scale_start + scale_size);
+
+        // Compute numel from shape
+        size_t numel = 1;
+        for (auto d : shape) {
+            numel *= d;
+        }
+
+        // Packed bytes: 2 int4 weights per byte
+        size_t packed_bytes = (numel + 1) / 2;
+
+        // Pointer to packed nibble data inside the mmap
+        uint8_t* packed = reinterpret_cast<uint8_t*>(p + offset);
+
+        // Allocate an owned buffer in int4_storage
+        int4_storage.emplace_back(numel);
+        std::vector<int8_t>& unpacked = int4_storage.back();
+
+        // Unpack nibbles to signed 4-bit values [-8..7].
+        // Convention: low nibble = first weight, high nibble = second.
+        for (size_t i = 0; i < numel; ++i) {
+            size_t byte_idx = i / 2;
+            bool   high     = (i & 1) != 0;
+
+            uint8_t byte = packed[byte_idx];
+            uint8_t nib  = high ? (byte >> 4) : (byte & 0x0F);
+
+            // Map 0..15 -> -8..7
+            int8_t val = (nib < 8)
+                ? static_cast<int8_t>(nib)
+                : static_cast<int8_t>(nib - 16);
+
+            unpacked[i] = val;
+        }
+
+        // Now build Tensor<int8_t> that points to unpacked.data(),
+        // using the same scale logic as int8.
+        Tensor<int8_t> t(unpacked.data(), scales, shape);
+        m.insert({key, t});
+        return;
+    }
 }
 
 // Load Tensor views for all weights using offsets from the JSON header.

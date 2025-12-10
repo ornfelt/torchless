@@ -1,3 +1,4 @@
+#include <deque>
 #include <unordered_map>
 #include <string>
 #include "../common/tensor.h"
@@ -31,6 +32,9 @@ struct Parameters {
 
     // Layer specific weights
     std::vector<std::unordered_map<std::string, std::variant<Tensor<float>, Tensor<int8_t>>>> layer_weights;
+
+    // Keeps unpacked int4 weights alive for the lifetime of Parameters
+    std::deque<std::vector<int8_t>> int4_storage;
 
     static void* map_file(int fd);
     void load_tensor(std::unordered_map<std::string, std::variant<Tensor<float>, Tensor<int8_t>>>& m, char* p, const std::string& key, nlohmann::json& value);
