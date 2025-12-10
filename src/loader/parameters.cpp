@@ -1,31 +1,88 @@
 #include "parameters.h"
 #include <iostream>
-
-#include <fcntl.h>     // declares open()
-#include <unistd.h>    // declares close()
-#include <sys/mman.h>  // declares mmap()
+#include <fcntl.h>
 #include <sys/stat.h>
 
+#ifdef _WIN32
+    #include <windows.h>
+    #include <io.h>
+    // Map POSIX names to MSVC
+    #define open  _open
+    #define read  _read
+    #define close _close
+    #define fstat _fstat
+    #define stat  _stat
+#else
+    #include <unistd.h>    // POSIX: open/read/close/fstat
+    #include <sys/mman.h>  // POSIX: mmap
+#endif
+
 // Memory-map the model file into virtual address space and return base pointer.
-void* Parameters::map_file(int fd){
-    // Get the size of the binary file
+void* Parameters::map_file(int fd) {
+#ifdef _WIN32
+    // Convert C file descriptor to a Win32 HANDLE
+    HANDLE hFile = (HANDLE)_get_osfhandle(fd);
+    if (hFile == INVALID_HANDLE_VALUE) {
+        std::cerr << "Model binary get HANDLE failed" << std::endl;
+        std::exit(1);
+    }
+
+    // Get file size
+    LARGE_INTEGER size;
+    if (!GetFileSizeEx(hFile, &size)) {
+        std::cerr << "Model binary get size failed" << std::endl;
+        std::exit(1);
+    }
+
+    // Create a read-only file mapping
+    HANDLE hMap = CreateFileMappingA(
+        hFile,
+        nullptr,
+        PAGE_READONLY,
+        0, 0,
+        nullptr
+    );
+    if (!hMap) {
+        std::cerr << "Model CreateFileMapping failed" << std::endl;
+        std::exit(1);
+    }
+
+    // Map the whole file into memory
+    void* p = MapViewOfFile(
+        hMap,
+        FILE_MAP_READ,
+        0, 0,
+        0
+    );
+
+    // Close the mapping handle (view stays valid)
+    CloseHandle(hMap);
+
+    if (!p) {
+        std::cerr << "Model MapViewOfFile failed" << std::endl;
+        std::exit(1);
+    }
+
+    return p;
+
+#else
+    // POSIX mmap version
     struct stat st;
-    if (fstat(fd, &st) < 0){
+    if (fstat(fd, &st) < 0) {
         std::cerr << "Model binary get size failed" << std::endl;
         std::exit(1);
     }
 
     size_t size = st.st_size;
 
-    // Load the file into virtual memory
-    void* p = mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
-
-    if (p == MAP_FAILED){
+    void* p = mmap(nullptr, size, PROT_READ, MAP_PRIVATE, fd, 0);
+    if (p == MAP_FAILED) {
         std::cerr << "Model mmap failed" << std::endl;
         std::exit(1);
     }
 
     return p;
+#endif
 }
 
 // Extract model hyperparameters from JSON header into a Config struct.
@@ -92,11 +149,10 @@ void Parameters::load_weights(char* p, nlohmann::json& header){
     }
 }
 
-void Parameters::load_parameters(const std::string& path){
+void Parameters::load_parameters(const std::string& path) {
     // Get file descriptor
     int fd = open(path.c_str(), O_RDONLY);
-
-    if (fd < 0){
+    if (fd < 0) {
         std::cerr << "Model binary open failed" << std::endl;
         std::exit(1);
     }
@@ -106,7 +162,7 @@ void Parameters::load_parameters(const std::string& path){
     read(fd, &header_size, sizeof(header_size));
 
     // Read and parse the JSON Header
-    char* header = new char[header_size+1]; // TODO: Apparently using a runtime size is unsafe
+    char* header = new char[header_size + 1];
     read(fd, header, header_size);
     header[header_size] = '\0';
     nlohmann::json header_json = nlohmann::json::parse(std::string(header));

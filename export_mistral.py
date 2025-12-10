@@ -70,7 +70,7 @@ def quantize(x: torch.Tensor, n_bits: int, group_size: int):
 def load_config(header):
     config_path = os.path.join(IN_PATH, "config.json")
 
-    with open(config_path, 'r') as f:
+    with open(config_path, 'r', encoding="utf-8") as f:
         cfg = json.load(f)
         header["metadata"] = {
             "hidden_size": str(cfg["hidden_size"]),
@@ -92,7 +92,7 @@ def load_tokenizer(header):
     tokenizer_path = os.path.join(IN_PATH, "tokenizer.json")
     header["tokenizer"] = {}
 
-    with open(tokenizer_path, 'r') as f:
+    with open(tokenizer_path, "r", encoding="utf-8") as f:
         t = json.load(f)
         header["tokenizer"]["vocab"] = t["model"]["vocab"]
         header["tokenizer"]["merges"] = t["model"]["merges"]
@@ -199,7 +199,7 @@ if args.quant == "int8":
 
 # Load weight map
 tensor_index_path = os.path.join(IN_PATH, "model.safetensors.index.json")
-with open(tensor_index_path, 'r') as f:
+with open(tensor_index_path, 'r', encoding="utf-8") as f:
     index = json.load(f)
     weight_map = index["weight_map"]
 
