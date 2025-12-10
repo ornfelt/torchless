@@ -1,3 +1,5 @@
+#define USE_TIMER
+
 #if 0
 #include <iostream>
 #include "src/loader/parameters.h"
@@ -134,13 +136,21 @@ int main(int argc, char** argv) {
 }
 #else
 #include <iostream>
-#include <vector>
 #include <memory>
 #include <random>
 #include <algorithm>
 
 #include "src/loader/parameters.h"
 #include "src/model/mistral/modules.h"
+
+#ifdef USE_TIMER
+#include <chrono>
+
+uint64_t get_timestamp_ms() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+}
+#endif
 
 // RNG + sampling helpers
 std::random_device rd;
@@ -223,9 +233,28 @@ void run_generation(Model<T>& model,
         model.forward(infer, got[i]);
     }
 
+#ifdef USE_TIMER
+    uint64_t start_time = get_timestamp_ms();
+
     // Start generation from last prompt token
     uint32_t t = got.back();
+    int i = 0;
+    for (;i<200;i++){
+        t = generate<T>(model, infer, t);
 
+        if (t == 2)
+            break;
+
+        // decode single token and stream it out
+        std::cout << params.tokenizer.decode({ t }) << std::flush;
+    }
+
+    std::cout << std::endl;
+    uint64_t end_time = get_timestamp_ms();
+    std::cout << "throughput: " << (i+1) / ((end_time - start_time) / 1000.0) << "tok/s" << std::endl;
+#else
+    // Start generation from last prompt token
+    uint32_t t = got.back();
     for (int i = 0; i < 50; i++) {
         t = generate<T>(model, infer, t);
 
@@ -234,6 +263,7 @@ void run_generation(Model<T>& model,
     }
 
     std::cout << std::endl;
+#endif
 }
 
 int main(int argc, char** argv) {
